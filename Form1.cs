@@ -26,7 +26,6 @@ public partial class Form1 : Form
             string outputFolder = ShowFolderDialog();
             if (string.IsNullOrEmpty(outputFolder))
                 return;
-
             ExtractPdfsFromOneNote(outputFolder);
         }
         catch (Exception ex)
@@ -60,9 +59,11 @@ public partial class Form1 : Form
         XNamespace ns = "http://schemas.microsoft.com/office/onenote/2013/onenote";
 
         int extractedCount = 0;
-        StringBuilder logBuilder = new StringBuilder();
-        logBuilder.AppendLine("OneNote PDF Extraction Log:");
-        logBuilder.AppendLine("==========================");
+
+        extractingInfo.AppendText("OneNote PDF Extraction Log:");
+        extractingInfo.AppendText(Environment.NewLine);
+        extractingInfo.AppendText("==========================");
+        extractingInfo.AppendText(Environment.NewLine);
 
         // Find all pages across the hierarchy
         foreach (var page in doc.Descendants(ns + "Page"))
@@ -74,11 +75,13 @@ public partial class Form1 : Form
             var section = page.Parent;
             string sectionName = section?.Attribute("name")?.Value ?? "Unknown Section";
 
-            logBuilder.AppendLine($"Processing page: {pageName} in section: {sectionName}");
+            extractingInfo.AppendText($"Processing page: {pageName} in section: {sectionName}");
+            extractingInfo.AppendText(Environment.NewLine);
 
             if (string.IsNullOrEmpty(pageId))
             {
-                logBuilder.AppendLine("  Skipped: No page ID found");
+                extractingInfo.AppendText("  Skipped: No page ID found");
+                extractingInfo.AppendText(Environment.NewLine);
                 continue;
             }
 
@@ -87,14 +90,16 @@ public partial class Form1 : Form
                 string pageContentXml;
                 onApplication.GetPageContent(pageId, out pageContentXml, OneNote.PageInfo.piAll);
 
-                int pdfCount = ExtractPdfsFromPage(pageContentXml, outputFolder, $"{sectionName}_{pageName}", logBuilder);
+                int pdfCount = ExtractPdfsFromPage(pageContentXml, outputFolder, $"{sectionName}_{pageName}");
                 extractedCount += pdfCount;
 
-                logBuilder.AppendLine($"  Found {pdfCount} PDF(s) on this page");
+                extractingInfo.AppendText($"  Found {pdfCount} PDF(s) on this page");
+                extractingInfo.AppendText(Environment.NewLine);
             }
             catch (Exception ex)
             {
-                logBuilder.AppendLine($"  Error processing page: {ex.Message}");
+                extractingInfo.AppendText($"  Error processing page: {ex.Message}");
+                extractingInfo.AppendText(Environment.NewLine);
             }
         }
 
@@ -110,14 +115,8 @@ public partial class Form1 : Form
                 "Extraction Complete", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
 
-        // Option to show detailed log
-        if (MessageBox.Show("Would you like to see the detailed extraction log?",
-            "Extraction Log", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
-        {
-            ShowLog(logBuilder.ToString());
-        }
     }
-    private int ExtractPdfsFromPage(string pageXml, string outputFolder, string pageIdentifier, StringBuilder log)
+    private int ExtractPdfsFromPage(string pageXml, string outputFolder, string pageIdentifier)
     {
         int count = 0;
         try
@@ -135,26 +134,31 @@ public partial class Form1 : Form
                     var pathAttr = insertedFile.Attribute("pathCache");
                     if (pathAttr == null)
                     {
-                        log.AppendLine("    Found inserted file but no path attribute");
+                        extractingInfo.AppendText("    Found inserted file but no path attribute");
+                        extractingInfo.AppendText(Environment.NewLine);
                         continue;
                     }
 
                     string filePath = pathAttr.Value;
-                    log.AppendLine($"    Found inserted file: {filePath}");
+                    extractingInfo.AppendText($"    Found inserted file: {filePath}");
+                    extractingInfo.AppendText(Environment.NewLine);
 
                     if (!filePath.EndsWith(".bin", StringComparison.OrdinalIgnoreCase))
                     {
-                        log.AppendLine("      Skipped: Not a BIN file");
+                        extractingInfo.AppendText("      Skipped: Not a BIN file");
+                        extractingInfo.AppendText(Environment.NewLine);
                         continue;
                     }
 
                     // Look for the corresponding .bin file
                     string binFilePath = GetBinFilePath(filePath);
-                    log.AppendLine($"      Looking for .bin file at: {binFilePath}");
+                    extractingInfo.AppendText($"      Looking for .bin file at: {binFilePath}");
+                    extractingInfo.AppendText(Environment.NewLine);
 
                     if (!File.Exists(binFilePath))
                     {
-                        log.AppendLine("      Error: Could not find corresponding .bin file");
+                        extractingInfo.AppendText("      Error: Could not find corresponding .bin file");
+                        extractingInfo.AppendText(Environment.NewLine);
                         continue;
                     }
 
@@ -169,7 +173,8 @@ public partial class Form1 : Form
                     {
                         // Truncate the path but keep the extension
                         fileName = fileName.Substring(0, 255) + ".pdf";
-                        log.AppendLine("      Warning: Filename was truncated due to length");
+                        extractingInfo.AppendText("      Warning: Filename was truncated due to length");
+                        extractingInfo.AppendText(Environment.NewLine);
                     }
 
                     // If the file exists, add a number
@@ -184,34 +189,36 @@ public partial class Form1 : Form
 
                     // Copy/Move the bin file to the output location as PDF
                     File.Copy(binFilePath, fileName);
-                    log.AppendLine($"      Extracted PDF to: {fileName}");
+                    extractingInfo.AppendText($"      Extracted PDF to: {fileName}");
+                    extractingInfo.AppendText(Environment.NewLine);
                     count++;
                 }
                 catch (Exception ex)
                 {
-                    log.AppendLine($"      Error extracting file: {ex.Message}");
+                    extractingInfo.AppendText($"      Error extracting file: {ex.Message}");
+                    extractingInfo.AppendText(Environment.NewLine);
                 }
             }
         }
         catch (Exception ex)
         {
-            log.AppendLine($"    Error processing page XML: {ex.Message}");
+            extractingInfo.AppendText($"    Error processing page XML: {ex.Message}");
+            extractingInfo.AppendText(Environment.NewLine);
         }
 
         return count;
     }
 
     // Helper function to find the bin file corresponding to the PDF
-    private string GetBinFilePath(string pdfPath)
+    private string GetBinFilePath(string path)
     {
         try
         {
             // The .bin files might be stored in several possible locations
 
-            // Option 1: Direct .bin extension replacement
-            string binPath1 = Path.ChangeExtension(pdfPath, ".bin");
-            if (File.Exists(binPath1))
-                return binPath1;
+            // Option 1: path is already correct
+            if (File.Exists(path))
+                return path;
 
             // Option 2: OneNote cache location
             string oneNoteCachePath = Path.Combine(
@@ -220,7 +227,7 @@ public partial class Form1 : Form
 
             // Sometimes OneNote stores files using hash values or IDs
             // Try to find by filename without extension
-            string fileName = Path.GetFileNameWithoutExtension(pdfPath);
+            string fileName = Path.GetFileNameWithoutExtension(path);
 
             if (Directory.Exists(oneNoteCachePath))
             {
@@ -250,13 +257,13 @@ public partial class Form1 : Form
                 }
             }
 
-            // As a last resort, return the original path with .bin extension
-            return binPath1;
+            // As a last resort, return the original path
+            return path;
         }
         catch
         {
-            // If anything fails, just return a simple extension swap
-            return Path.ChangeExtension(pdfPath, ".bin");
+            // If anything fails, just return path
+            return path;
         }
     }
 
@@ -286,51 +293,5 @@ public partial class Form1 : Form
         {
             return false;
         }
-    }
-    // Helper method to show the log in a dialog
-    private void ShowLog(string logText)
-    {
-        Form logForm = new Form
-        {
-            Text = "Extraction Log",
-            Size = new Size(700, 500),
-            StartPosition = FormStartPosition.CenterParent
-        };
-
-        TextBox textBox = new TextBox
-        {
-            Multiline = true,
-            ReadOnly = true,
-            ScrollBars = ScrollBars.Both,
-            Dock = DockStyle.Fill,
-            Text = logText,
-            Font = new Font("Consolas", 9)
-        };
-
-        Button saveButton = new Button
-        {
-            Text = "Save Log",
-            Dock = DockStyle.Bottom
-        };
-
-        saveButton.Click += (sender, e) =>
-        {
-            using (SaveFileDialog saveDialog = new SaveFileDialog())
-            {
-                saveDialog.Filter = "Text files (*.txt)|*.txt|All files (*.*)|*.*";
-                saveDialog.FileName = "OneNotePdfExtraction.log";
-
-                if (saveDialog.ShowDialog() == DialogResult.OK)
-                {
-                    File.WriteAllText(saveDialog.FileName, logText);
-                    MessageBox.Show($"Log saved to {saveDialog.FileName}", "Log Saved",
-                        MessageBoxButtons.OK, MessageBoxIcon.Information);
-                }
-            }
-        };
-
-        logForm.Controls.Add(textBox);
-        logForm.Controls.Add(saveButton);
-        logForm.ShowDialog();
     }
 }
